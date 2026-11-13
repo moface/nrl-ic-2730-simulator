@@ -28,7 +28,9 @@ export function mountPtt({ buttons, send, worklet, notify, onLevel, spaceShortcu
       const held = gesture?.button === button;
       button.disabled = !gesture && !available();
       button.title = !supported ? '麦克风需要 HTTPS' :
-        !state?.tx_enabled ? '桥接尚未启用实机发射' : '按住启用麦克风并发射，松手停止';
+        !state?.tx_enabled ? '桥接尚未启用实机发射' :
+        requestingMic ? '等待麦克风授权' : !radioReady() ? '等待机身状态同步' :
+        !gesture && !available() ? '机身正在操作或释放 PTT' : '按住启用麦克风并发射，松手停止';
       button.setAttribute('aria-pressed', String(held));
       button.classList.toggle('pressed', held);
     }
@@ -38,6 +40,7 @@ export function mountPtt({ buttons, send, worklet, notify, onLevel, spaceShortcu
     const previous = gesture;
     if (!previous) return;
     gesture = null;
+    clearTimeout(previous.startupTimer);
     onLevel?.(0);
     if (previous.started) send('tx-stop', previous.token).catch(() => {});
     if (previous.node) previous.node.port.onmessage = null;
@@ -67,8 +70,24 @@ export function mountPtt({ buttons, send, worklet, notify, onLevel, spaceShortcu
     if (gesture || closed || document.hidden || !available()) return;
     const current = { token: crypto.randomUUID().replaceAll('-', ''), button, frames: [] };
     gesture = current;
-    requestingMic = true;
     updateControls();
+    // Resume during the pointer/key event, before permission or worklet awaits
+    // can consume the browser's user activation.
+    let resume;
+    try {
+      const context = new AudioContext({ sampleRate: 8000, latencyHint: 'interactive' });
+      current.context = context;
+      if (context.sampleRate !== 8000) throw new Error('浏览器未提供 8 kHz 麦克风采样');
+      resume = context.resume();
+      resume.catch(error => fail(current, error));
+    } catch (error) {
+      fail(current, error);
+      return;
+    }
+    requestingMic = true;
+    current.startupTimer = setTimeout(() => {
+      fail(current, new Error('麦克风未就绪，请检查权限后重新按住 PTT'));
+    }, 5000);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 }, video: false });
       if (gesture !== current) {
@@ -88,9 +107,7 @@ export function mountPtt({ buttons, send, worklet, notify, onLevel, spaceShortcu
     }
 
     try {
-      const context = new AudioContext({ sampleRate: 8000, latencyHint: 'interactive' });
-      current.context = context;
-      if (context.sampleRate !== 8000) throw new Error('浏览器未提供 8 kHz 麦克风采样');
+      const context = current.context;
       await context.audioWorklet.addModule(worklet);
       if (gesture !== current) return;
       const node = new AudioWorkletNode(context, 'mic-frames');
@@ -100,7 +117,7 @@ export function mountPtt({ buttons, send, worklet, notify, onLevel, spaceShortcu
       node.connect(silent).connect(context.destination);
       context.createMediaStreamSource(current.stream).connect(node);
       node.port.onmessage = event => sendFrame(current, event.data);
-      await context.resume();
+      await resume;
     } catch (error) {
       fail(current, error);
     }
@@ -123,6 +140,7 @@ export function mountPtt({ buttons, send, worklet, notify, onLevel, spaceShortcu
     current.busy = true;
     try {
       if (!current.started) {
+        clearTimeout(current.startupTimer);
         current.started = true;
         await send('tx-start', current.token);
         if (gesture !== current) {
