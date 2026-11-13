@@ -36,7 +36,7 @@ cd nrl-ic-2730-simulator
 
 默认本机 HTTP 仅监听回环地址。若明确需要无鉴权的内网 HTTP，可配置精确的 `allowed_hosts`（包括端口），并用防火墙限定访问范围。浏览器麦克风需要可信 HTTPS 或本机回环地址。
 
-## Docker 与飞牛 NAS
+## Docker 部署
 
 发布后的部署从 GitHub 下载 Compose 文件和配置样例，容器从 GHCR 拉取。需要 Docker Compose v2。
 
@@ -58,15 +58,9 @@ docker compose up -d softhead
 docker compose ps softhead
 ```
 
-GitHub Actions 在默认分支推送后构建 AMD64 / ARM64 镜像。飞牛计划任务可定期从部署目录运行 `./deploy/update.sh`，软机头仍在联网时脚本会跳过更新。配置继续保存在挂载目录。也可把镜像固定到某个 `:sha-...` 或发布标签。
+GitHub Actions 在默认分支推送后构建 AMD64 / ARM64 镜像。可从部署目录定期运行 `./deploy/update.sh`，软机头仍在联网时脚本会跳过更新。配置继续保存在挂载目录。也可把镜像固定到某个 `:sha-...` 或发布标签。
 
 源码开发时，可以运行 `docker build -t nrl-ic-2730-simulator:local .`，并设置 `SOFTHEAD_IMAGE=nrl-ic-2730-simulator:local` 使用本地镜像。
-
-### 迁移已有实例
-
-先在 NAS 上用单独端口启动新容器，保持脱网，检查网页、鉴权和配置挂载。记录现有反代上游和旧程序启动方式。切换时先让旧实例脱网，再把 HTTPS 路由指向容器。确认网页可登录后，从新页面联网，检查 NRL 在线身份、液晶和接收音频。回滚时先断开新容器的 NRL 会话，再恢复原反代上游并启动旧实例。
-
-升级前记录当前镜像标签或摘要。可先用固定版本运行，确认稳定后再切到自动跟踪的标签。计划任务需要由拥有 Docker 操作权限的 NAS 账户执行。
 
 ## 开发
 

@@ -24,7 +24,7 @@ cd nrl-ic-2730-simulator
 
 Linux 或 macOS 运行 `python3 -m softhead.server`，Windows PowerShell 运行 `py -3 -m softhead.server`。打开 [本机仿真页](http://127.0.0.1:8787/softhead/) 就能体验。接实机时，把 `config.example.toml` 复制为项目目录下的 `config.toml`，编辑后重启服务。
 
-### Docker 部署（服务器、飞牛 NAS）
+### Docker 部署
 
 需要 Docker Compose v2。从同一个 GitHub 仓库获取 Compose 文件和配置样例。GHCR 镜像发布后，可直接拉取 AMD64 或 ARM64 镜像。
 
@@ -46,7 +46,7 @@ docker compose pull softhead
 docker compose up -d softhead
 ```
 
-默认只在宿主机本地开放，可打开同一个 [仿真页](http://127.0.0.1:8787/softhead/)。从其他电脑远程访问时，请按手册配置 HTTPS、网页账号和反代。飞牛 NAS 可用计划任务运行 `./deploy/update.sh` 拉取新版镜像，软机头仍在联网时会跳过更新。[Docker 与 HTTPS 部署手册](https://github.com/moface/nrl-ic-2730-simulator#docker-与飞牛-nas)
+默认只在宿主机本地开放，可打开同一个 [仿真页](http://127.0.0.1:8787/softhead/)。从其他电脑远程访问时，请按手册配置 HTTPS、网页账号和反代。可以定期运行 `./deploy/update.sh` 拉取新版镜像，软机头仍在联网时会跳过更新。[Docker 与 HTTPS 部署手册](https://github.com/moface/nrl-ic-2730-simulator#docker-部署)
 
 ### 接入实机
 
