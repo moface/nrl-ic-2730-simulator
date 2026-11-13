@@ -1,6 +1,6 @@
 services:
   softhead:
-    image: ${SOFTHEAD_IMAGE:-nrl-ic-2730-simulator:local}
+    image: ${SOFTHEAD_IMAGE:-ghcr.io/moface/nrl-ic-2730-simulator:latest}
     user: "${SOFTHEAD_UID:-65532}:${SOFTHEAD_GID:-65532}"
     ports:
       - "${SOFTHEAD_BIND:-127.0.0.1}:${SOFTHEAD_PORT:-8787}:8787"

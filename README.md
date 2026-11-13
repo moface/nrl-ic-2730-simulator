@@ -4,25 +4,64 @@ IC-2730 网页机头，可离线仿真，也可通过 NRL Link 操作配有 NRL2
 
 项目作者 **BD1EMJ**（[GitHub · moface](https://github.com/moface)）。
 
-## 快速开始
+## 选择部署方式
 
-从 GitHub 下载源码，进入项目目录。需要 Python 3.11 或以上，无需安装 Python 或前端依赖包。
+- [Docker 一键部署](#docker-一键部署)
+- [Linux 命令行](#linux-命令行)
+- [macOS 命令行](#macos-命令行)
+- [Windows 命令行](#windows-命令行)
+
+### Docker 一键部署
+
+需要 Git、Docker 和 Docker Compose v2。以下命令在 Linux、macOS 或 Windows 的 WSL 终端运行。Docker 必须能从该终端连接。
 
 ```sh
 git clone https://github.com/moface/nrl-ic-2730-simulator.git
 cd nrl-ic-2730-simulator
+./deploy/install.sh
 ```
 
-| 平台 | 命令 |
-| --- | --- |
-| Linux / macOS | `python3 -m softhead.server` |
-| Windows PowerShell | `py -3 -m softhead.server` |
+脚本首次生成 `config/config.toml`，拉取 GHCR 的 AMD64 或 ARM64 镜像并启动容器。已有配置会保留。默认从 Docker 宿主机访问 [仿真页](http://127.0.0.1:8787/softhead/)，实机连接默认关闭。
 
-打开 `http://127.0.0.1:8787/softhead/`。无配置文件时是离线仿真。按 Ctrl+C 停止服务。
+修改配置后运行 `docker compose restart softhead`。查看日志用 `docker compose logs --tail=100 softhead`，停止用 `docker compose stop softhead`。更新可运行 `./deploy/update.sh`，软机头联网时会跳过。配置保存在挂载目录中。可通过环境变量 `SOFTHEAD_IMAGE` 固定镜像标签。
+
+### Linux 命令行
+
+使用发行版软件包管理器安装 Git 和 Python 3.11 或以上，先用 `python3 --version` 检查版本。
+
+```sh
+git clone https://github.com/moface/nrl-ic-2730-simulator.git
+cd nrl-ic-2730-simulator
+python3 -m softhead.server
+```
+
+### macOS 命令行
+
+从 [Python 官网](https://www.python.org/downloads/macos/)安装 Python 3.11 或以上。若系统提示安装 Git 所需的命令行工具，完成安装后继续。
+
+```sh
+python3 --version
+git clone https://github.com/moface/nrl-ic-2730-simulator.git
+cd nrl-ic-2730-simulator
+python3 -m softhead.server
+```
+
+### Windows 命令行
+
+从 [Python 官网](https://www.python.org/downloads/windows/)安装 Python 3.11 或以上，并安装 [Git for Windows](https://git-scm.com/download/win)。新开 PowerShell 执行：
+
+```powershell
+py -3 --version
+git clone https://github.com/moface/nrl-ic-2730-simulator.git
+Set-Location nrl-ic-2730-simulator
+py -3 -m softhead.server
+```
+
+三种命令行部署都无需安装额外 Python 包。启动后打开 [仿真页](http://127.0.0.1:8787/softhead/)，按 Ctrl+C 停止。也可从 GitHub 下载 ZIP 并解压，再进入解压后的目录执行启动命令。
 
 ## 接入 NRL 实机
 
-1. 将 `config.example.toml` 复制为 `config.toml`，设置 `[nrl]`。使用你自己的呼号、软机头 SSID、机身 SSID、NRL UDP 地址及端口，并设置 `enabled = true`。
+1. 命令行部署将 `config.example.toml` 复制为项目根目录的 `config.toml`，Docker 部署编辑 `config/config.toml`。设置 `[nrl]`。使用你自己的呼号、软机头 SSID、机身 SSID、NRL UDP 地址及端口，并设置 `enabled = true`。
 2. 在 NRL 服务器上为软机头注册机型 14 的设备，并将它和机身加入同一房间。三个设备的 SSID 各自独立。如有设备鉴权，在 `[nrl]` 中填写 `password_file`。NRL 密码与网页登录密码独立。
 3. 启动服务，打开 `/softhead/?mode=live`。点「联网」，或脱网时长按电源并确认「联网并开机」。
 4. `hardware_panel_ssids` 配置硬机头编号。设置 `device_status_url` 可通过 NRL 的公开 `/device/get` 检查硬机头在线状态。未填写硬机头编号或查询接口不可用时，页面会提示无法确认在线状态，由你决定是否继续。避免在同一个房间让两个机头同时在线。
@@ -36,32 +75,10 @@ cd nrl-ic-2730-simulator
 
 默认本机 HTTP 仅监听回环地址。若明确需要无鉴权的内网 HTTP，可配置精确的 `allowed_hosts`（包括端口），并用防火墙限定访问范围。浏览器麦克风需要可信 HTTPS 或本机回环地址。
 
-## Docker 部署
-
-发布后的部署从 GitHub 下载 Compose 文件和配置样例，容器从 GHCR 拉取。需要 Docker Compose v2。
-
-```sh
-git clone https://github.com/moface/nrl-ic-2730-simulator.git
-cd nrl-ic-2730-simulator
-mkdir -p config
-cp config.example.toml config/config.toml
-```
-
-编辑 `config/config.toml`，把容器内的 `web.bind` 设为 `"0.0.0.0"`，`web.port` 保持为 `8787`。如果只从宿主机访问 HTTP，在 `allowed_hosts` 加入 `"127.0.0.1:8787"`，并保留 Compose 默认的宿主机回环绑定。远程部署按上一节配置 HTTPS。按需用 `SOFTHEAD_BIND` 和 `SOFTHEAD_PORT` 修改宿主机监听，用 `SOFTHEAD_UID` 和 `SOFTHEAD_GID` 选择能读取配置的非 root 用户。
-
-在项目目录的 `.env` 写入镜像地址，再启动服务。首次发布后需在 GitHub Packages 确认镜像包可见性。公开镜像可以匿名拉取。
-
-```sh
-printf '%s\n' 'SOFTHEAD_IMAGE=ghcr.io/moface/nrl-ic-2730-simulator:latest' >> .env
-docker compose pull softhead
-docker compose up -d softhead
-docker compose ps softhead
-```
-
-GitHub Actions 在默认分支推送后构建 AMD64 / ARM64 镜像。可从部署目录定期运行 `./deploy/update.sh`，软机头仍在联网时脚本会跳过更新。配置继续保存在挂载目录。也可把镜像固定到某个 `:sha-...` 或发布标签。
-
-源码开发时，可以运行 `docker build -t nrl-ic-2730-simulator:local .`，并设置 `SOFTHEAD_IMAGE=nrl-ic-2730-simulator:local` 使用本地镜像。
+Docker 远程部署时，在 `config/config.toml` 设置 HTTPS 相关选项。使用反代时，应让后端端口只对代理可达。若需修改宿主机监听，可设置 `SOFTHEAD_BIND` 和 `SOFTHEAD_PORT`。容器内端口保持 `8787`，对外 HTTPS 端口由反代决定。若映射到其他本地 HTTP 端口，也要在 `allowed_hosts` 加入实际访问的 Host 和端口。挂载配置和密码文件必须能由容器的非 root 用户读取，可用 `SOFTHEAD_UID` 和 `SOFTHEAD_GID` 调整。
 
 ## 开发
 
 `softhead/` 是 Python 桥接，`web/` 是免构建的静态前端，`tests/` 是本地回环测试。运行 `python -m unittest discover -s tests`。真机功能以 NRL2730 兼容情况为准。仓库发布范围是程序和通用样例，固件、抓包、凭据和实际台站配置由部署者自行保管。
+
+从源码构建本地镜像可运行 `docker build -t nrl-ic-2730-simulator:local .`，再用 `SOFTHEAD_IMAGE=nrl-ic-2730-simulator:local docker compose up -d` 启动已有配置。

@@ -26,27 +26,15 @@ Linux 或 macOS 运行 `python3 -m softhead.server`，Windows PowerShell 运行 
 
 ### Docker 部署
 
-需要 Docker Compose v2。从同一个 GitHub 仓库获取 Compose 文件和配置样例。GHCR 镜像发布后，可直接拉取 AMD64 或 ARM64 镜像。
+需要 Git、Docker 和 Docker Compose v2。在 Linux、macOS 或 Windows 的 WSL 终端执行：
 
 ```sh
 git clone https://github.com/moface/nrl-ic-2730-simulator.git
 cd nrl-ic-2730-simulator
-mkdir -p config
-cp config.example.toml config/config.toml
+./deploy/install.sh
 ```
 
-编辑 `config/config.toml`，在 `[web]` 中设置 `bind = "0.0.0.0"`，端口保持 `8787`。从宿主机本地体验时，把 `allowed_hosts` 设为 `["127.0.0.1:8787"]`。然后在项目目录的 `.env` 加入以下一行。
-
-```dotenv
-SOFTHEAD_IMAGE=ghcr.io/moface/nrl-ic-2730-simulator:latest
-```
-
-```sh
-docker compose pull softhead
-docker compose up -d softhead
-```
-
-默认只在宿主机本地开放，可打开同一个 [仿真页](http://127.0.0.1:8787/softhead/)。从其他电脑远程访问时，请按手册配置 HTTPS、网页账号和反代。可以定期运行 `./deploy/update.sh` 拉取新版镜像，软机头仍在联网时会跳过更新。[Docker 与 HTTPS 部署手册](https://github.com/moface/nrl-ic-2730-simulator#docker-部署)
+脚本保留已有配置，并从 GHCR 拉取镜像启动服务。默认从宿主机打开 [仿真页](http://127.0.0.1:8787/softhead/)。从其他电脑访问时，请按手册配置 HTTPS、网页账号和反代。[完整部署手册](../README.md#docker-一键部署)
 
 ### 接入实机
 
