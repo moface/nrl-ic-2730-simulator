@@ -1,7 +1,7 @@
 """Single-owner NRL soft-head session. All UDP writes run on the worker."""
 from collections import deque
 from queue import Empty, Full, Queue
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 from time import monotonic, sleep
 
 from .nrl_endpoint import NrlEndpoint
@@ -252,6 +252,34 @@ def empty_snapshot(allow_tx=False):
     }
 
 
+class AudioListeners:
+    def __init__(self):
+        self.lock = Lock()
+        self.queues = set()
+
+    def subscribe(self):
+        queue = Queue(maxsize=24)
+        with self.lock:
+            self.queues.add(queue)
+        return queue
+
+    def unsubscribe(self, queue):
+        with self.lock:
+            self.queues.discard(queue)
+
+    def publish(self, frame):
+        with self.lock:
+            for queue in self.queues:
+                try:
+                    queue.put_nowait(frame)
+                except Full:
+                    try:
+                        queue.get_nowait()
+                    except Empty:
+                        pass
+                    queue.put_nowait(frame)
+
+
 class LiveHead:
     def __init__(self, address, allow_tx=False, *, identity, host_ssid, tx_limit=TX_LIMIT):
         self.address = address
@@ -260,7 +288,7 @@ class LiveHead:
         self.tx_limit = tx_limit
         self.allow_tx = allow_tx
         self.requests = Queue(maxsize=16)
-        self.audio = Queue(maxsize=24)
+        self.audio = AudioListeners()
         self.stop_event = Event()
         self.volume_targets = {}
         self.sql_targets = {}
@@ -345,12 +373,7 @@ class LiveHead:
                     if self.wake is not None and endpoint.online:
                         self.wake.observe(packet.payload, now, endpoint.send)
                 if packet and packet.kind == 1 and not ptt.owner:
-                    if self.audio.full():
-                        try:
-                            self.audio.get_nowait()
-                        except Empty:
-                            pass
-                    self.audio.put_nowait(packet.payload)
+                    self.audio.publish(packet.payload)
             except OSError:
                 if ptt.owner:
                     ptt.stop(ptt.owner, now)

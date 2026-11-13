@@ -23,7 +23,6 @@ from .live_head import LiveHead, PANEL_LEVELS, empty_snapshot, validate_startup_
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / 'web'
-STREAM_LOCK = threading.Lock()
 SESSION_COOKIE = 'softhead_session'
 SESSION_SECONDS = 12 * 60 * 60
 
@@ -493,27 +492,24 @@ input{{width:100%;color:inherit;background:#171b18}}button{{margin-top:4px;backg
         if head is None:
             self.send_error(503, 'Soft head offline')
             return
-        if not STREAM_LOCK.acquire(blocking=False):
-            self.send_error(409, 'Audio monitor already open')
-            return
+        queue = head.audio.subscribe()
         try:
-            self.stream_live_audio(head)
+            self.stream_live_audio(head, queue)
         except OSError:
             pass
         finally:
-            STREAM_LOCK.release()
+            head.audio.unsubscribe(queue)
 
     def session_alive(self):
         expiry = getattr(self, 'auth_expiry', None)
         return expiry is None or expiry > time()
 
-    def stream_live_audio(self, head):
+    def stream_live_audio(self, head, queue):
         self.connection.settimeout(3)
         self.send_response(200)
         self.send_header('Content-Type', 'application/octet-stream')
         self.send_header('Cache-Control', 'no-store')
         self.end_headers()
-        queue = head.audio
         while not head.stop_event.is_set() and self.session_alive():
             try:
                 frame = queue.get(timeout=.5)

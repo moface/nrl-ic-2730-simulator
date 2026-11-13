@@ -256,9 +256,11 @@ class LiveUdpTests(unittest.TestCase):
                 radio.sendto(reply.packet(3), address)
                 lcd = bytes.fromhex('fe0000000434333834354f4f3030323fb4424034333833314f4f3030380000024000fd')
                 radio.sendto(host.packet(6, lcd), address)
+                listeners = [live.audio.subscribe() for _ in range(2)]
                 radio.sendto(host.packet(1, bytes([0x55]) * 100), address)
                 until(lambda: live.snapshot['online'] and live.snapshot['power'] == 'on')
-                self.assertEqual(live.audio.get(timeout=1), bytes([0x55]) * 100)
+                for listener in listeners:
+                    self.assertEqual(listener.get(timeout=1), bytes([0x55]) * 100)
                 sync = decode_packet(radio.recv(2048))
                 self.assertEqual((sync.kind, sync.payload), (6, bytes.fromhex('fef0fd')))
                 self.assertEqual(live.snapshot['meter'], [6, 0])
