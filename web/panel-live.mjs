@@ -98,7 +98,41 @@ function drawBand(raw, labels, level, meterBytes, lcdMuted) {
 export function mountRealPanel() {
   const $ = selector => document.querySelector(selector);
   const notice = $('#notice');
-  const show = message => { notice.textContent = message; };
+  let message = '';
+  let operationError = '';
+  let loginExpired = false;
+  let hasPolled = false;
+  const show = text => {
+    message = text;
+    operationError = '';
+    renderNotice();
+  };
+  const warn = text => {
+    operationError = text;
+    renderNotice();
+  };
+
+  function renderNotice() {
+    let issue = '';
+    if (loginExpired) issue = '登录已过期，请刷新页面重新登录。';
+    else if (hasPolled && !state) issue = '网页与桥接连接中断。请检查网络，连接恢复后再操作。';
+    else if (state?.live_available === false) issue = '尚未配置 NRL 实机连接。请检查服务端的 NRL 配置。';
+    else if (!networkPending && state?.network_enabled) {
+      if (!state.online) issue = '软机头未连上 NRL。请检查 NRL 服务器和网络。';
+      else if (state.wake_result === 'no-handshake' || state.wake_result === 'no-display') {
+        issue = '机身开机回显不完整。请确认机身盒子在线，再长按电源重试。';
+      } else if (state.power === 'on' && (state.locked || !state.dial_ready)) {
+        const fixes = [];
+        if (state.locked) fixes.push('面板已锁定，请长按 MENU 解锁。');
+        if (!state.dial_ready) fixes.push('调谐旋钮未同步。请在网页长按电源关机，等屏幕熄灭后再长按开机。');
+        issue = fixes.join(' ');
+      }
+    }
+    const warning = issue || operationError;
+    const text = warning || message;
+    if (notice.textContent !== text) notice.textContent = text;
+    notice.classList.toggle('notice-warning', !!warning);
+  }
   const controls = $('.controls-bar');
   controls.setAttribute('aria-label', '实机控制');
   const receive = mountReceiveAudio(controls, debug + 'audio', { compact: true, followRadio: true });
@@ -133,7 +167,7 @@ export function mountRealPanel() {
   const transmit = mountPtt({
     buttons: [$('#ptt'), $('#micPtt')], send: (action, value, audio) =>
       command(action, value, audio, debug + 'live/action'),
-    worklet: debug + 'mic-worklet.js', notify: show, onLevel: receive?.setTransmitLevel, spaceShortcut: true,
+    worklet: debug + 'mic-worklet.js', notify: warn, onLevel: receive?.setTransmitLevel, spaceShortcut: true,
   });
   const networkDialog = document.createElement('dialog');
   networkDialog.innerHTML = `
@@ -205,7 +239,7 @@ export function mountRealPanel() {
       if (closed) return;
       show(result?.power === 'on' ? '软机头已联网，机身已开机' : '软机头已联网，未收到机身开机回显');
     } catch (error) {
-      show(error.message);
+      warn(error.message);
     } finally {
       networkPending = false;
       render();
@@ -239,7 +273,7 @@ export function mountRealPanel() {
       }
       if (await connectNetwork()) show('正在连接软机头');
     } catch (error) {
-      show(error.message);
+      warn(error.message);
     } finally {
       networkPending = false;
       render();
@@ -253,6 +287,7 @@ export function mountRealPanel() {
   }
 
   function render() {
+    renderNotice();
     const online = !!state?.online;
     const on = state?.power === 'on';
     const networkEnabled = !!state?.network_enabled;
@@ -317,7 +352,7 @@ export function mountRealPanel() {
       });
       if (response.status === 401) {
         closed = true;
-        show('登录已过期，请刷新页面重新登录');
+        loginExpired = true;
       }
       if (!response.ok) throw new Error('连接失败');
       const previous = state;
@@ -345,6 +380,7 @@ export function mountRealPanel() {
       receiveMeters = null;
       pending.length = 0;
     }
+    hasPolled = true;
     transmit.setState(networkPending ? null : state);
     render();
     const now = performance.now();
@@ -355,16 +391,18 @@ export function mountRealPanel() {
 
   function ready() {
     if (!networkPending && state?.online && !state.busy && !state.tx && !state.tx_releasing && state.power === 'on') return true;
-    show('等待机身开机并同步');
+    warn('机身暂时无法操作。请确认已联网、已开机，并等待当前操作完成。');
     return false;
   }
 
   async function send(action, value) {
     try {
       await command(action, value, undefined, debug + 'live/action');
+      operationError = '';
+      renderNotice();
       return true;
     } catch (error) {
-      show(error.message || '操作未送达');
+      warn(error.message || '操作未送达，请检查连接后重试');
       return false;
     }
   }
@@ -394,8 +432,8 @@ export function mountRealPanel() {
         }
         const side = sideName[band];
         if (kind === 'dial') {
-          if (state.locked) { show('面板已锁定，长按 MENU 解锁后可调谐'); continue; }
-          if (!state.dial_ready) { show('从实机面板开机后可同步调谐旋钮'); continue; }
+          if (state.locked) { renderNotice(); continue; }
+          if (!state.dial_ready) { renderNotice(); continue; }
           if (await send('dial', `${side}-${delta > 0 ? 'up' : 'down'}`)) {
             angles[band] += delta * 12;
             $(`[data-knob="dial"][data-band="${band}"]`).style.setProperty('--angle', `${angles[band]}deg`);

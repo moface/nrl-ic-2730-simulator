@@ -178,12 +178,19 @@ export function mountPtt({ buttons, send, worklet, notify, onLevel, spaceShortcu
   }
   if (spaceShortcut) {
     document.addEventListener('keydown', event => {
-      if (event.code !== 'Space' || event.repeat ||
-          event.target.closest('input, button, select, textarea, a, [contenteditable], dialog') ||
-          document.querySelector('dialog[open]')) return;
+      if (event.code !== 'Space' || document.querySelector('dialog[open]')) return;
+      const target = event.target;
+      if (target.closest('input, select, textarea, a, [contenteditable], dialog')) return;
+      if (target.closest('button') && !target.closest('button[data-action], button[data-mic], #ptt, #micPtt')) return;
       event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      if (!available() && !gesture) {
+        notify(buttons[0].title);
+        return;
+      }
       press(buttons[0]);
-    });
+    }, { capture: true });
   }
   window.addEventListener('keyup', event => {
     if ([' ', 'Enter', 'Escape'].includes(event.key)) release();

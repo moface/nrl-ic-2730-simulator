@@ -196,3 +196,14 @@ body[data-panel-mode="live"] .mic-feedback{display:none}
 .network-button:hover:enabled{filter:brightness(1.1)}
 .network-button:disabled{opacity:.65;cursor:default}
 .title-row .network-button + .debug-link{margin-inline-start:0}
+
+.notice-row #notice.notice-warning{
+  padding:8px 12px;
+  border:1px solid #c88b53;
+  border-radius:5px;
+  background:#35261e;
+  color:#ffe0b2;
+  font-size:13px;
+  font-weight:700;
+  line-height:1.5;
+}
