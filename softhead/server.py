@@ -29,7 +29,9 @@ SESSION_SECONDS = 12 * 60 * 60
 
 
 def hardware_panel_warning(url, callsign, ssids):
-    if not url and ssids:
+    if not ssids:
+        return '未配置硬机头 SSID，无法确认在线状态。请确认后再联网。'
+    if not url:
         return '无法查询硬机头状态，请先确认硬机头是否已脱网。'
     online = []
     uncertain = False

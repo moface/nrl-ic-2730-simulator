@@ -25,7 +25,7 @@ cd nrl-ic-2730-simulator
 1. 将 `config.example.toml` 复制为 `config.toml`，设置 `[nrl]`。使用你自己的呼号、软机头 SSID、机身 SSID、NRL UDP 地址及端口，并设置 `enabled = true`。
 2. 在 NRL 服务器上为软机头注册机型 14 的设备，并将它和机身加入同一房间。三个设备的 SSID 各自独立。如有设备鉴权，在 `[nrl]` 中填写 `password_file`。NRL 密码与网页登录密码独立。
 3. 启动服务，打开 `/softhead/?mode=live`。点「联网」，或脱网时长按电源并确认「联网并开机」。
-4. `hardware_panel_ssids` 配置硬机头编号。设置 `device_status_url` 可通过 NRL 的公开 `/device/get` 检查硬机头在线状态。接口不可用时会提示确认。避免在同一个房间让两个机头同时在线。
+4. `hardware_panel_ssids` 配置硬机头编号。设置 `device_status_url` 可通过 NRL 的公开 `/device/get` 检查硬机头在线状态。未填写硬机头编号或查询接口不可用时，页面会提示无法确认在线状态，由你决定是否继续。避免在同一个房间让两个机头同时在线。
 5. `allow_tx` 默认关闭。需要发射时启用该选项，在本机回环地址或 HTTPS 实机页按住 PTT。浏览器首次弹出麦克风权限时，松手并授权后再按。TX 指示以机身回显为准，失焦、断流、松手或达到配置上限会释放。
 
 网页入口 `/softhead/` 是仿真，`/softhead/?mode=live` 是实机，`/softhead/debug/` 是调试页。机身关机并超过 `offline_idle_seconds` 未操作时，软机头会停止 NRL 心跳。关机时可提前设置音量和静噪，刷新网页恢复 VOL 5、SQL 15。

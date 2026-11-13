@@ -18,7 +18,9 @@ port = 60050
 callsign = "N0CALL"
 client_ssid = 3
 host_ssid = 0
+# 硬机头 SSID，可填写多个，例如 [1, 2]。
 hardware_panel_ssids = [1]
+# 查询在线状态还需要 NRL 的设备查询接口。
 # device_status_url = "https://nrl.example.org/device/get"
 # password_file = "nrl-device-password.txt"
 allow_tx = false
