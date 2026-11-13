@@ -82,3 +82,9 @@ Docker 远程部署时，在 `config/config.toml` 设置 HTTPS 相关选项。�
 `softhead/` 是 Python 桥接，`web/` 是免构建的静态前端，`tests/` 是本地回环测试。运行 `python -m unittest discover -s tests`。真机功能以 NRL2730 兼容情况为准。仓库发布范围是程序和通用样例，固件、抓包、凭据和实际台站配置由部署者自行保管。
 
 从源码构建本地镜像可运行 `docker build -t nrl-ic-2730-simulator:local .`，再用 `SOFTHEAD_IMAGE=nrl-ic-2730-simulator:local docker compose up -d` 启动已有配置。
+
+## 接收降噪与更新日志
+
+接收降噪使用 SpeexDSP。Docker 镜像已包含该库。直接运行 Python 时，可在 Debian 或 Ubuntu 安装 `libspeexdsp1`，在 macOS 用 `brew install speexdsp`，或在 Windows 通过 Docker 使用降噪。缺少该库时，网页会继续播放原始接收音频。
+
+版本变更见 [更新日志](CHANGELOG.md)。

@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
 
 from .config import load_config, setup
+from .denoise import SpeexDenoise
 from .live_head import LiveHead, PANEL_LEVELS, empty_snapshot, validate_startup_levels
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -390,6 +391,9 @@ input{{width:100%;color:inherit;background:#171b18}}button{{margin-top:4px;backg
                     if not isinstance(data, str) or not re.fullmatch(r'(?:[a-f0-9]{200}){1,6}', data):
                         raise ValueError
                     value = (value, [bytes.fromhex(data[i:i+200]) for i in range(0, len(data), 200)])
+            elif action == 'ptt-sync':
+                if value != 'display':
+                    raise ValueError
             elif action == 'power-on-levels':
                 validate_startup_levels(value)
             elif action == 'activity':
@@ -492,19 +496,36 @@ input{{width:100%;color:inherit;background:#171b18}}button{{margin-top:4px;backg
         if head is None:
             self.send_error(503, 'Soft head offline')
             return
+        denoise = None
+        query = urlsplit(self.path).query
+        if query == 'denoise=speex' or query.startswith('denoise=speex&suppression='):
+            try:
+                suppression = -18 if query == 'denoise=speex' else int(query.split('=', 2)[2])
+                if not -40 <= suppression <= 0:
+                    raise ValueError
+            except ValueError:
+                self.send_error(400, 'Suppression must be between -40 and 0 dB')
+                return
+            try:
+                denoise = SpeexDenoise(suppression)
+            except OSError:
+                self.send_error(501, 'SpeexDSP unavailable')
+                return
         queue = head.audio.subscribe()
         try:
-            self.stream_live_audio(head, queue)
+            self.stream_live_audio(head, queue, denoise)
         except OSError:
             pass
         finally:
             head.audio.unsubscribe(queue)
+            if denoise:
+                denoise.close()
 
     def session_alive(self):
         expiry = getattr(self, 'auth_expiry', None)
         return expiry is None or expiry > time()
 
-    def stream_live_audio(self, head, queue):
+    def stream_live_audio(self, head, queue, denoise):
         self.connection.settimeout(3)
         self.send_response(200)
         self.send_header('Content-Type', 'application/octet-stream')
@@ -513,7 +534,8 @@ input{{width:100%;color:inherit;background:#171b18}}button{{margin-top:4px;backg
         while not head.stop_event.is_set() and self.session_alive():
             try:
                 frame = queue.get(timeout=.5)
-                self.wfile.write(b'\x01' + frame)
+                for output in denoise.push(frame) if denoise else (frame,):
+                    self.wfile.write(b'\x01' + output)
             except Empty:
                 self.wfile.write(b'\x00')
             except OSError:

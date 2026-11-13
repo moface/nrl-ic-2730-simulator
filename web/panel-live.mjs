@@ -100,6 +100,7 @@ export function mountRealPanel() {
   const notice = $('#notice');
   let message = '';
   let operationError = '';
+  let pttBlocked = '';
   let loginExpired = false;
   let hasPolled = false;
   const show = text => {
@@ -128,7 +129,7 @@ export function mountRealPanel() {
         issue = fixes.join(' ');
       }
     }
-    const warning = issue || operationError;
+    const warning = issue || operationError || pttBlocked;
     const text = warning || message;
     if (notice.textContent !== text) notice.textContent = text;
     notice.classList.toggle('notice-warning', !!warning);
@@ -147,6 +148,8 @@ export function mountRealPanel() {
   const displayCache = [null, null];
   let menuActive = false;
   let fastPollUntil = 0;
+  let pttPollUntil = 0;
+  let refreshTimer;
   let previousFrequencies = [];
   let receiveMeters = null;
   const pending = [];
@@ -168,6 +171,17 @@ export function mountRealPanel() {
     buttons: [$('#ptt'), $('#micPtt')], send: (action, value, audio) =>
       command(action, value, audio, debug + 'live/action'),
     worklet: debug + 'mic-worklet.js', notify: warn, onLevel: receive?.setTransmitLevel, spaceShortcut: true,
+    onActivity: () => {
+      pttPollUntil = performance.now() + 1800;
+      if (refreshTimer !== undefined) {
+        clearTimeout(refreshTimer);
+        refresh();
+      }
+    },
+    onBlocked: text => {
+      pttBlocked = text;
+      renderNotice();
+    },
   });
   const networkDialog = document.createElement('dialog');
   networkDialog.innerHTML = `
@@ -344,6 +358,7 @@ export function mountRealPanel() {
   }
 
   async function refresh() {
+    refreshTimer = undefined;
     if (closed) return;
     const started = performance.now();
     try {
@@ -385,8 +400,8 @@ export function mountRealPanel() {
     render();
     const now = performance.now();
     const fast = !document.hidden && state?.online && state.power === 'on' &&
-      (now < fastPollUntil || !!receiveMeters?.until);
-    if (!closed) setTimeout(refresh, fast ? Math.max(12, scanPollMs - (now - started)) : idlePollMs);
+      (now < Math.max(fastPollUntil, pttPollUntil) || state.tx || state.tx_releasing || !!receiveMeters?.until);
+    if (!closed) refreshTimer = setTimeout(refresh, fast ? Math.max(12, scanPollMs - (now - started)) : idlePollMs);
   }
 
   function ready() {

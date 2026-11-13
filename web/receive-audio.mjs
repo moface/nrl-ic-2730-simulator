@@ -2,6 +2,7 @@ const SAMPLE_RATE = 8000;
 const FRAME_BYTES = 100;
 const START_BUFFER = 0.075;
 const MAX_BUFFER = 0.25;
+const DEFAULT_PLAYBACK_GAIN = 10;
 
 export function pcmRms(samples) {
   let sum = 0;
@@ -61,7 +62,18 @@ class Playout {
 
   constructor(context) {
     this.context = context;
+    const boost = context.createGain();
+    boost.gain.value = DEFAULT_PLAYBACK_GAIN;
+    const compressor = context.createDynamicsCompressor();
+    compressor.threshold.value = -10;
+    compressor.knee.value = 6;
+    compressor.ratio.value = 12;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.12;
+    this.input = boost;
     this.gain = context.createGain();
+    boost.connect(compressor);
+    compressor.connect(this.gain);
     this.gain.connect(context.destination);
   }
 
@@ -78,10 +90,15 @@ class Playout {
     const pcm = decodeALaw(payload);
     const buffer = this.context.createBuffer(1, pcm.length, SAMPLE_RATE);
     const samples = buffer.getChannelData(0);
-    for (let i = 0; i < pcm.length; i++) samples[i] = pcm[i] / 32768;
+    let energy = 0;
+    for (let i = 0; i < pcm.length; i++) {
+      const sample = pcm[i] / 32768;
+      samples[i] = sample;
+      if (measureLevel) energy += samples[i] * samples[i];
+    }
     const source = this.context.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.gain);
+    source.connect(this.input);
     source.onended = () => {
       this.#sources.delete(source);
       source.disconnect();
@@ -89,7 +106,7 @@ class Playout {
     this.#sources.add(source);
     source.start(this.#next);
     this.#next += buffer.duration;
-    if (measureLevel) return pcmRms(pcm) * this.gain.gain.value;
+    if (measureLevel) return Math.min(1, Math.sqrt(energy / samples.length) * this.input.gain.value) * this.gain.gain.value;
   }
 }
 
@@ -104,11 +121,29 @@ export function mountReceiveAudio(parent, endpoint = 'audio', { compact = false,
       <label>接收电平 <meter min="0" max="1" value="0"></meter></label>
       <label>发射电平 <meter min="0" max="1" value="0"></meter></label>
     </div>
-    <label class="audio-volume"><span>播放音量</span><input type="range" min="0" max="100" value="35"><output>35%</output></label>
+    <div class="audio-volume">
+      <label for="playback-volume">播放音量</label>
+      <input id="playback-volume" type="range" data-playback-volume min="0" max="100" value="100">
+      <output for="playback-volume">100%</output>
+      <button class="audio-mute" type="button" aria-pressed="false">静音</button>
+      <div class="audio-gain" role="group" aria-label="播放增益">
+        <span>增益</span>
+        ${[1, 5, 10, 20].map(gain =>
+          `<button type="button" data-playback-gain="${gain}" aria-pressed="${gain === DEFAULT_PLAYBACK_GAIN}">${gain} 倍</button>`
+        ).join('')}
+        <button type="button" data-playback-denoise aria-pressed="true">降噪</button>
+      </div>
+    </div>
   ` : `
     <h3>电台接收音频</h3>
     <button type="button">开始监听</button>
-    <label>播放音量 <input type="range" min="0" max="100" value="35"></label>
+    <label>播放音量 <input type="range" data-playback-volume min="0" max="100" value="100"></label>
+    <fieldset>
+      <legend>SpeexDSP 接收降噪</legend>
+      <button type="button" data-playback-denoise aria-pressed="false">降噪</button>
+      <label>最大噪声衰减（dB） <input data-noise-suppression type="number" min="-40" max="0" step="1" value="-18"></label>
+      <button type="button" data-apply-suppression>应用</button>
+    </fieldset>
     <p role="status">已停止</p>
   `;
   if (compact) parent.append(section);
@@ -123,6 +158,8 @@ export function mountReceiveAudio(parent, endpoint = 'audio', { compact = false,
   let context;
   let playout;
   let muted = false;
+  let playbackMuted = false;
+  let playbackGain = DEFAULT_PLAYBACK_GAIN;
   let radioReady = false;
   let retry = null;
   const preferenceKey = 'softhead.receive-audio.enabled';
@@ -137,12 +174,56 @@ export function mountReceiveAudio(parent, endpoint = 'audio', { compact = false,
     }
   }
   const setGain = () => {
-    if (playout) playout.gain.gain.value = muted ? 0 : Number(volume.value) / 100;
+    if (playout) playout.gain.gain.value = (muted || playbackMuted) ? 0 : Number(volume.value) / 100;
   };
   const volumeReadout = section.querySelector('output');
-  volume.addEventListener('input', () => {
+  const muteButton = section.querySelector('.audio-mute');
+  const gainButtons = section.querySelectorAll('[data-playback-gain]');
+  for (const gainButton of gainButtons) {
+    gainButton.addEventListener('click', () => {
+      playbackGain = Number(gainButton.dataset.playbackGain);
+      if (playout) playout.input.gain.value = playbackGain;
+      for (const option of gainButtons) {
+        option.setAttribute('aria-pressed', String(option === gainButton));
+      }
+    });
+  }
+  const denoiseButton = section.querySelector('[data-playback-denoise]');
+  let denoise = compact;
+  let suppression = -18;
+  const suppressionInput = section.querySelector('[data-noise-suppression]');
+  section.querySelector('[data-apply-suppression]')?.addEventListener('click', () => {
+    if (!suppressionInput.value || !suppressionInput.reportValidity()) return;
+    suppression = suppressionInput.valueAsNumber;
+    if (denoise && controller) {
+      stop();
+      start();
+    }
+  });
+  denoiseButton?.addEventListener('click', () => {
+    denoise = !denoise;
+    denoiseButton.setAttribute('aria-pressed', String(denoise));
+    if (controller || retry !== null) {
+      stop();
+      startWhenReady();
+    }
+  });
+  let volumeBeforeMute = volume.value;
+  function updateVolume() {
     setGain();
     if (volumeReadout) volumeReadout.textContent = `${volume.value}%`;
+    muteButton?.setAttribute('aria-pressed', String(playbackMuted));
+  }
+  volume.addEventListener('input', () => {
+    playbackMuted = false;
+    updateVolume();
+  });
+  muteButton?.addEventListener('click', () => {
+    playbackMuted = !playbackMuted;
+    if (playbackMuted) volumeBeforeMute = volume.value;
+    volume.value = playbackMuted ? '0' : volumeBeforeMute;
+    updateVolume();
+    if (playbackMuted) showReceiveLevel?.(0);
   });
 
   function stop() {
@@ -207,6 +288,7 @@ export function mountReceiveAudio(parent, endpoint = 'audio', { compact = false,
       if (!context) {
         context = new AudioContext({ latencyHint: 'interactive' });
         playout = new Playout(context);
+        playout.input.gain.value = playbackGain;
       }
       setGain();
       if (followRadio) {
@@ -218,11 +300,20 @@ export function mountReceiveAudio(parent, endpoint = 'audio', { compact = false,
         await context.resume();
       }
       if (current.signal.aborted) return;
-      const response = await fetch(endpoint, {
+      const response = await fetch(denoise ? endpoint + `?denoise=speex&suppression=${suppression}` : endpoint, {
         headers: { 'X-Softhead-Audio': '1' },
         signal: current.signal,
         cache: 'no-store',
       });
+      if (response.status === 501 && denoise) {
+        denoise = false;
+        denoiseButton.disabled = true;
+        denoiseButton.setAttribute('aria-pressed', 'false');
+        denoiseButton.title = '服务端未安装 SpeexDSP';
+        stop();
+        startWhenReady();
+        return;
+      }
       if (!response.ok) {
         if (response.status === 401) {
           stop();

@@ -1,5 +1,6 @@
 """Single-owner NRL soft-head session. All UDP writes run on the worker."""
 from collections import deque
+from hashlib import sha256
 from queue import Empty, Full, Queue
 from threading import Event, Lock, Thread
 from time import monotonic, sleep
@@ -8,6 +9,8 @@ from .nrl_endpoint import NrlEndpoint
 from .lcd import apply_patch, decode_patch, text_cells, frequency_candidate
 
 LEASE = 0.35
+HOST_FRESH_TIMEOUT = 3
+DISPLAY_POLL_INTERVAL = 2
 TX_LIMIT = 60
 RELEASE_DELAYS = (0, .07, .18, .45, .85, 1.4)
 RELEASE = ((6, bytes.fromhex('fe16040000fd'), 4), (5, b'', 0))
@@ -186,15 +189,18 @@ class Ptt:
         self.send = send
         self.tx_limit = tx_limit
         self.owner = None
+        self.session_id = None
         self.closed = deque(maxlen=256)
         self.releases = deque()
         self.audio = deque(maxlen=12)
         self.next_audio = 0
 
     def start(self, token, now):
-        if self.owner or token in self.closed or self.releases:
+        if self.owner or token in self.closed:
             raise ValueError('PTT 尚未就绪')
+        self.releases.clear()
         self.owner = token
+        self.session_id = sha256(token.encode()).hexdigest()
         self.deadline = now + LEASE
         self.limit = now + self.tx_limit
         self.next_audio = now
@@ -217,6 +223,7 @@ class Ptt:
         if token != self.owner:
             return
         self.owner = None
+        self.session_id = None
         self.audio.clear()
         self.releases.extend(now + delay for delay in RELEASE_DELAYS)
         self.tick(now)
@@ -246,7 +253,7 @@ class Ptt:
 def empty_snapshot(allow_tx=False):
     return {
         'online': False, 'lcd': ['??????????'] * 2, 'tx': False, 'power': 'unknown',
-        'busy': False, 'host_fresh': False, 'tx_enabled': allow_tx, 'tx_releasing': False,
+        'busy': False, 'host_fresh': False, 'tx_enabled': allow_tx, 'tx_releasing': False, 'tx_session': None,
         'meter': [None, None], 'meter_bytes': [None, None], 'flags': [[], []], 'volume_targets': {}, 'sql_targets': {},
         'dial_ready': False, 'locked': None, 'wake_phase': None, 'wake_result': None,
     }
@@ -327,7 +334,7 @@ class LiveHead:
                 ptt.close()
 
     def loop(self, endpoint, ptt):
-        next_beat = last_display = last_host = 0
+        next_beat = next_display_poll = last_display = last_host = 0
         pending_power = None
         synchronized_session = False
         cells = [None] * 32
@@ -337,7 +344,7 @@ class LiveHead:
         while not self.stop_event.is_set():
             now = monotonic()
             try:
-                if ptt.owner and (not endpoint.online or now - last_host > 3):
+                if ptt.owner and (not endpoint.online or now - last_host >= HOST_FRESH_TIMEOUT):
                     ptt.stop(ptt.owner, now)
                 ptt.tick(now)
                 if now >= next_beat:
@@ -347,8 +354,14 @@ class LiveHead:
                     synchronized_session = False
                     self.dial_counts = None
                 elif not synchronized_session and not scheduled and self.wake is None and not ptt.owner and not ptt.releases:
-                    endpoint.send(6, bytes.fromhex('fef0fd'))
+                    endpoint.send(6, WakeHandshake.PROBE)
                     synchronized_session = True
+                elif (was_on and now >= next_display_poll and now - last_host >= DISPLAY_POLL_INTERVAL
+                      and not scheduled and not pending_power and self.wake is None
+                      and not ptt.owner and not ptt.releases):
+                    # An idle display may send no updates until the next panel action.
+                    next_display_poll = now + DISPLAY_POLL_INTERVAL
+                    endpoint.send(6, WakeHandshake.POLL)
                 if scheduled and scheduled[0][0] <= now:
                     _, payload = scheduled.popleft()
                     endpoint.send(6, payload)
@@ -388,7 +401,7 @@ class LiveHead:
             elif last_display and now - last_host < 30 and (was_on or any(frequency_candidate(text) for text in lcd)):
                 power = 'on'
                 was_on = True
-            host_fresh = now - last_host < 3
+            host_fresh = now - last_host < HOST_FRESH_TIMEOUT
             if pending_power and not scheduled:
                 target, deadline = pending_power
                 if power == target or now >= deadline:
@@ -427,7 +440,7 @@ class LiveHead:
                              'wake_phase': self.wake.phase if self.wake else None, 'wake_result': self.wake_result,
                              'busy': bool(scheduled or pending_power or self.wake), 'tx': bool(ptt.owner),
                              'host_fresh': host_fresh, 'tx_enabled': self.allow_tx,
-                             'tx_releasing': bool(ptt.releases)}
+                             'tx_releasing': bool(ptt.releases), 'tx_session': ptt.session_id}
             try:
                 queued, action, value, reply = self.requests.get_nowait()
             except Empty:
@@ -454,7 +467,13 @@ class LiveHead:
             token, frames = value
             ptt.feed(token, frames, now)
             return
-        if scheduled or ptt.owner or ptt.releases:
+        if action == 'ptt-sync':
+            if not self.allow_tx or power != 'on' or scheduled or ptt.owner:
+                raise ValueError('机身暂时无法查询状态，请稍后重新按住 PTT')
+            if not host_fresh:
+                endpoint.send(6, WakeHandshake.POLL)
+            return
+        if scheduled or ptt.owner or (ptt.releases and action != 'tx-start'):
             raise ValueError('机头正在处理上一条操作')
         if action == 'tx-start':
             if not self.allow_tx or power != 'on' or not host_fresh:

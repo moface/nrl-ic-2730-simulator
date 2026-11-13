@@ -1,7 +1,7 @@
 class MicFrames extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.samples = new Int16Array(400);
+    this.samples = new Int16Array(100);
     this.used = 0;
   }
   process(inputs) {
@@ -9,6 +9,7 @@ class MicFrames extends AudioWorkletProcessor {
       this.samples[this.used++] = Math.round(Math.max(-1, Math.min(0.99997, sample)) * 32768);
       if (this.used === this.samples.length) {
         this.port.postMessage(this.samples);
+        if (this.samples.length === 100) this.samples = new Int16Array(400);
         this.used = 0;
       }
     }

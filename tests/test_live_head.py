@@ -143,6 +143,18 @@ class PttTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.ptt.start('d', 1.93)
 
+    def test_immediate_repress_replaces_only_previous_release_retries(self):
+        self.ptt.start('first', 0)
+        self.ptt.stop('first', .05)
+        self.ptt.start('second', .06)
+        self.ptt.stop('first', .07)
+        self.ptt.feed('second', [bytes(100)], .25)
+        self.ptt.tick(.25)
+        self.assertEqual(self.sent, [*PRESS, *RELEASE, *PRESS, (1, bytes(100), 4)])
+        self.ptt.tick(.61)
+        self.ptt.tick(2.1)
+        self.assertEqual(self.sent[-12:], list(RELEASE) * 6)
+
     def test_continuous_mic_hits_hard_limit(self):
         self.ptt.start('a', 0)
         for i in range(1, TX_LIMIT * 10):
@@ -314,5 +326,26 @@ class LiveUdpTests(unittest.TestCase):
                 self.assertEqual(received, [*PRESS, (1, bytes([0xd5]) * 100, 4), *RELEASE])
                 until(lambda: not live.snapshot['tx'])
                 self.assertIsNotNone(live.request('tx-audio', ('one', [bytes(100)])))
+
+                # The host goes quiet after PTT release and only answers a display poll.
+                # Keep the NRL connection alive separately, as the server would.
+                radio.settimeout(3)
+                for _ in range(2):  # Drop the first poll to exercise stale-state recovery.
+                    deadline = monotonic() + 3
+                    while monotonic() < deadline:
+                        packet = decode_packet(radio.recv(2048))
+                        if packet.kind == 2:
+                            radio.sendto(reply.packet(3), address)
+                        if (packet.kind, packet.payload) == (6, WakeHandshake.POLL):
+                            break
+                    else:
+                        self.fail('Bridge did not poll the idle radio')
+                self.assertFalse(live.snapshot['host_fresh'])
+                radio.sendto(host.packet(6, lcd), address)
+                until(lambda: live.snapshot['host_fresh'] and not live.snapshot['tx_releasing'])
+                self.assertIsNone(live.request('tx-start', 'two'))
+                self.assertIsNone(live.request('tx-stop', 'two'))
+                self.assertIsNone(live.request('tx-start', 'three'))
+                self.assertIsNone(live.request('tx-stop', 'three'))
             finally:
                 live.close()

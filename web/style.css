@@ -134,16 +134,19 @@ body[data-panel-mode="live"]:not([data-panel-ready]) .readback{visibility:hidden
 body[data-panel-mode="live"] .controls-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 16px;padding:16px 0}
 body[data-panel-mode="live"] .controls-bar .readback{width:auto;min-width:0;flex-wrap:wrap;gap:8px 12px}
 body[data-panel-mode="live"] .controls-bar .sim-controls{width:auto;justify-content:flex-end;flex-wrap:wrap}
-.panel-audio{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr) minmax(150px,1fr) minmax(145px,255px);gap:8px 12px;align-items:center;padding:8px 10px;background:#202423;border:1px solid #353b37;border-radius:6px;min-width:0}
+.panel-audio{--audio-track-width:clamp(40px,6vw,76px);grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:8px 12px;align-items:center;padding:8px 10px;background:#202423;border:1px solid #353b37;border-radius:6px;min-width:0}
 .panel-audio button{min-height:32px;padding:0 10px;border:1px solid #59604e;border-radius:5px;color:#d7e1bc;background:#31382b;font-size:11px;white-space:nowrap}
 .panel-audio button:hover{background:#3a4332}
 .panel-audio button[aria-pressed="true"]{border-color:#8b9b68;background:#3a4432}
 .panel-audio p{margin:0;font-size:11px;color:#aab4aa;min-width:0;overflow-wrap:anywhere}
-.panel-audio .audio-volume{display:grid;grid-template-columns:auto minmax(2.75rem,1fr) 3ch;gap:8px;align-items:center;color:#c4ccc4;font-size:11px;white-space:nowrap}
-.panel-audio input{width:100%;min-width:0;accent-color:#c7d79c}
+.panel-audio .audio-volume{display:grid;grid-template-columns:auto var(--audio-track-width) 4ch auto;gap:6px;justify-content:start;align-items:center;color:#c4ccc4;font-size:11px;white-space:nowrap}
+.panel-audio input{width:100%;min-width:0;margin:0;padding:0;accent-color:#c7d79c}
+.panel-audio .audio-gain{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.panel-audio .audio-gain button,.panel-audio .audio-mute{min-height:23px;padding:0 5px;font-size:10px}
+.panel-audio .audio-gain button[aria-pressed="true"]{background:#c7d79c;color:#22291d}
 .panel-audio output{text-align:right;font:11px 'IBM Plex Mono',monospace}
-.audio-levels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.audio-levels label{display:grid;grid-template-columns:auto minmax(24px,1fr);align-items:center;gap:6px;color:#c4ccc4;font-size:11px;white-space:nowrap}
+.audio-levels{display:grid;grid-template-columns:repeat(2,max-content);gap:10px}
+.audio-levels label{display:grid;grid-template-columns:auto var(--audio-track-width);align-items:center;gap:6px;color:#c4ccc4;font-size:11px;white-space:nowrap}
 .audio-levels meter{width:100%;min-width:0;height:9px;accent-color:#a3bd82}
 .audio-levels meter::-webkit-meter-bar{background:#151a17;border:1px solid #475246;border-radius:3px}
 .audio-levels meter::-webkit-meter-optimum-value{background:#a3bd82}
