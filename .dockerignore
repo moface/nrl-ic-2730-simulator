@@ -1,0 +1,5 @@
+**
+!softhead/
+!softhead/*.py
+!web/
+!web/*

@@ -1,0 +1,11 @@
+services:
+  softhead:
+    image: ${SOFTHEAD_IMAGE:-nrl-ic-2730-simulator:local}
+    user: "${SOFTHEAD_UID:-65532}:${SOFTHEAD_GID:-65532}"
+    ports:
+      - "${SOFTHEAD_BIND:-127.0.0.1}:${SOFTHEAD_PORT:-8787}:8787"
+    volumes:
+      - ./config:/config:ro
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s

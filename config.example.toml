@@ -1,0 +1,26 @@
+[web]
+bind = "127.0.0.1"
+port = 8787
+# public_origin = "https://radio.example.org"
+# trusted_proxies = ["172.18.0.10"] # Actual immediate HTTPS proxy source IP.
+# tls_cert = "fullchain.pem"       # Use with tls_key for direct HTTPS.
+# tls_key = "privkey.pem"
+# allowed_hosts = ["radio.lan:8787"] # Optional unauthenticated private LAN HTTP.
+
+[auth]
+username = "softhead"
+# password_file = "web-password.txt" # Required for HTTPS unless password is set.
+
+[nrl]
+enabled = false
+host = "nrl.example.org"
+port = 60050
+callsign = "N0CALL"
+client_ssid = 3
+host_ssid = 0
+hardware_panel_ssids = [1]
+# device_status_url = "https://nrl.example.org/device/get"
+# password_file = "nrl-device-password.txt"
+allow_tx = false
+tx_limit_seconds = 60
+offline_idle_seconds = 300
